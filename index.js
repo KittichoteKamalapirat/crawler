@@ -1,74 +1,46 @@
-import fetch from "node-fetch";
-import { Command } from "commander";
-import cheerio from "cheerio";
-import urlParser from "url";
+const fetch = require("node-fetch");
+const { Command } = require("commander");
+const cheerio = require("cheerio");
+const urlParser = require("url");
+const createWorker = require("./multiple-thread.js");
+const { getUrl } = require("./functions");
 const program = new Command();
+
+//command line
 program.version("0.0.1").description("Web Crawler for Links");
-
 program.option("-n, --args [args...]", "Add args with optional type");
-
 program.parse(process.argv);
-
 const options = program.opts();
+
+let maxWorkersNo = 1;
 if (options.args === undefined) console.log("no args");
 else if (options.args === true) console.log("add args");
-else console.log(`add args type ${options.args[0]} and ${options.args[1]}`);
+else {
+  // console.log(`add args type ${options.args[0]} and ${options.args[1]}`);
+  maxWorkersNo = options.args[0];
+}
 
-const seenUrls = {};
-
-//crawler function
-const crawl = async (url) => {
+//crawler
+let seenUrls = {};
+(async () => {
   try {
-    console.log(url);
-    if (seenUrls[url]) return;
-    seenUrls[url] = true;
-    console.log(url);
-    const response = await fetch(url);
+    const response = await fetch(options.args[1]);
+
+    console.log(options.args[1]);
     const html = await response.text();
-
-    //   break this loop if we saw this url
-
-    //log links in the current page
     const $ = cheerio.load(html);
-
     const links = $("a")
       .map((i, anchor) => anchor.attribs.href)
       .get();
 
-    //link could be google.com/xx/ff
-    //link could be /xx/ff
-
-    //host could be //google
-    //host could be //amazon
-
-    const { host, protocol } = urlParser.parse(url);
+    const { host, protocol } = urlParser.parse(options.args[1]);
 
     links
-      .filter((link) => link.includes(host))
+      .filter((link) => link.includes(host) && !link.includes(ignore))
       .forEach((link) => {
-        console.log(link);
-        crawl(getUrl(link, host, protocol));
+        createWorker(getUrl(url, host, protocol), maxWorkersNo, seenUrls);
       });
-
-    //make this one seen after finishing looking
   } catch (error) {
     console.log(error);
   }
-};
-
-//get absolute url
-
-//first input will be absolute => amazon.com/about
-//next could be /contact
-const getUrl = (link, host, protocol) => {
-  if (link.includes("http")) {
-    return link;
-  } else if (link.startsWith("/")) {
-    return `${protocol}//${host}${link}`;
-  } else {
-    return `${protocol}//${host}/${link}`;
-  }
-};
-
-// run the function
-crawl(options.args[1]);
+})();
